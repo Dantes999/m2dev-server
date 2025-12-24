@@ -85,7 +85,7 @@ quest event_mob_invasion begin
 			
 			elseif (wave == 3) then 
 			
-			else (wave > 3) then
+			elseif (wave > 3) then
 				return
 			end
 			

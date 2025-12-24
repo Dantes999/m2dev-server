@@ -1,0 +1,277 @@
+quest universal_instance_ui_v2 begin
+	state start begin
+
+		-- Sync map index to client on every login
+		when login begin
+			local current_map = pc.get_map_index()
+			cmdchat("SetInstanceState "..current_map)
+		end
+
+		-- Handle warp to lobby command
+		when login begin
+			local lobby_cmd = pc.getqf("instance_lobby_flag")
+			if lobby_cmd == 1 then
+				pc.setqf("instance_lobby_flag", 0)  -- Clear flag
+
+				local current_map = pc.get_map_index()
+				if current_map >= 10000 then
+					syschat("Exit your instance first!")
+					return
+				end
+
+				if current_map == 9999 then
+					syschat("You are already in the lobby!")
+					return
+				end
+
+				syschat("Warping to instance lobby...")
+				cmdchat("SetInstanceState 9999")  -- Tell client we're going to lobby
+				pc.warp(5029039, 5030927, 9999)  -- Warp to lobby
+				return
+			end
+		end
+
+		-- Handle instance creation from client
+		when login begin
+			local cmd = pc.getqf("instance_create_map")
+			if cmd > 0 then
+				pc.setqf("instance_create_map", 0)
+
+				local current_map = pc.get_map_index()
+				if current_map >= 10000 then
+					syschat("You are already in an instance!")
+					return
+				end
+
+				local map_idx = cmd
+
+				-- If not on lobby, warp there first
+				if current_map ~= 9999 then
+					pc.setqf("pending_instance_map", map_idx)
+					cmdchat("SetInstanceState 9999")
+					pc.warp(5029039, 5030927, 9999)
+					return
+				end
+
+				-- Map coordinate database
+				local maps = {
+					-- Main Kingdom Maps
+					[1] = {474300, 954800, "metin2_map_a1"},     -- Map 1 Rot (Red)
+					[3] = {353100, 882900, "metin2_map_a3"},     -- Map 2 Rot (Red)
+					[21] = {63800, 166400, "metin2_map_b1"},     -- Map 1 Gelb (Yellow)
+					[23] = {145500, 240000, "metin2_map_b3"},    -- Map 2 Gelb (Yellow)
+					[41] = {959900, 269200, "metin2_map_c1"},    -- Map 1 Blau (Blue)
+					[43] = {863900, 246000, "metin2_map_c3"},    -- Map 2 Blau (Blue)
+
+					-- Dungeons/Special Areas (using first spawn point from multiple coords)
+					[61] = {402100, 673900, "map_n_snowm_01"},           -- Tal von Seungryong
+					[62] = {599400, 757300, "metin2_map_n_flame_01"},    -- Feuerland (Fire Land)
+					[63] = {217800, 627200, "metin2_map_n_desert_01"},   -- Yongbi-Wüste (Desert)
+					[64] = {434200, 290600, "map_n_threeway"},           -- Berg Sohan
+					[65] = {590500, 110500, "metin2_map_milgyo"},        -- Dämonenturm (lv 30)
+					[66] = {60000, 496000, "metin2_map_deviltower1"},    -- Spinnendungeon (lv 36)
+				}
+
+				local map_info = maps[map_idx]
+				if not map_info then
+					syschat("ERROR: Map "..map_idx.." not in database!")
+					return
+				end
+
+				local spawn_x = map_info[1]
+				local spawn_y = map_info[2]
+
+				-- Store setup info for after warp
+				pc.setqf("pending_instance_setup", 1)
+				pc.setqf("pending_instance_base_map", map_idx)
+				pc.setqf("pending_instance_spawn_x", spawn_x)
+				pc.setqf("pending_instance_spawn_y", spawn_y)
+
+				-- Create and warp to instance
+				d.new_jump(map_idx, spawn_x, spawn_y)
+			end
+		end
+
+		-- Setup instance after arriving
+		when login begin
+			local needs_setup = pc.getqf("pending_instance_setup")
+			if needs_setup == 1 then
+				local current_map = pc.get_map_index()
+
+				if current_map >= 10000 then
+					pc.setqf("pending_instance_setup", 0)
+
+					local map_idx = pc.getqf("pending_instance_base_map")
+					local spawn_x = pc.getqf("pending_instance_spawn_x")
+					local spawn_y = pc.getqf("pending_instance_spawn_y")
+
+					-- Get map name from database
+					local maps = {
+						[1] = "metin2_map_a1",
+						[3] = "metin2_map_a3",
+						[21] = "metin2_map_b1",
+						[23] = "metin2_map_b3",
+						[41] = "metin2_map_c1",
+						[43] = "metin2_map_c3",
+						[61] = "map_n_snowm_01",
+						[62] = "metin2_map_n_flame_01",
+						[63] = "metin2_map_n_desert_01",
+						[64] = "map_n_threeway",
+						[65] = "metin2_map_milgyo",
+						[66] = "metin2_map_deviltower1",
+					}
+					local map_name = maps[map_idx]
+
+					-- Mark player as in instance
+					pc.setf("universal_instance", "in_instance", 1)
+					pc.setf("universal_instance", "original_map", map_idx)
+
+					-- Store dungeon info
+					d.setf("creator_pid", pc.get_player_id())
+					d.setf("create_time", get_time())
+					d.setf("last_activity", get_time())
+
+					-- Load regen files
+					if map_name then
+						local regen_file = "locale/english/map/"..map_name.."/regen.txt"
+						local npc_file = "locale/english/map/"..map_name.."/npc.txt"
+						d.regen_file(regen_file)
+						d.regen_file(npc_file)
+					end
+
+					-- Start cleanup timer
+					server_timer("instance_cleanup_v2", 60, current_map)
+
+					-- Notify
+					d.notice("Instance created successfully!")
+				end
+			end
+		end
+
+		-- Handle pending instance after warp to lobby
+		when login begin
+			local pending_map = pc.getqf("pending_instance_map")
+			if pending_map > 0 then
+				pc.setqf("pending_instance_map", 0)
+				pc.setqf("instance_create_map", pending_map)
+			end
+		end
+
+		-- Handle exit command from client UI - STEP 1: Warp out
+		when login begin
+			local exit_cmd = pc.getqf("instance_exit_flag")
+			if exit_cmd == 1 then
+				pc.setqf("instance_exit_flag", 0)
+
+				local current_map = pc.get_map_index()
+				if current_map < 10000 then
+					syschat("You are not in an instance.")
+					return
+				end
+
+				pc.setf("universal_instance", "in_instance", 0)
+
+				-- Save instance map for cleanup AFTER warp
+				pc.setqf("pending_cleanup_map", current_map)
+
+				-- Determine target coordinates
+				local empire = pc.get_empire()
+				local target_map = 1
+				local target_x = 474300
+				local target_y = 954800
+
+				if empire == 2 then
+					target_map = 21
+					target_x = 63800
+					target_y = 166400
+				elseif empire == 3 then
+					target_map = 41
+					target_x = 959900
+					target_y = 269200
+				end
+
+				cmdchat("SetInstanceState "..target_map)
+				syschat("Returning to starting town...")
+
+				-- Schedule cleanup NOW, before warp
+				clear_server_timer("instance_cleanup_v2", current_map)
+				server_timer("instance_exit_cleanup", 5, current_map)
+				sys_log(0, string.format("Scheduled cleanup for instance %d", current_map))
+
+				pc.warp(target_x, target_y, target_map)
+			end
+		end
+
+		-- STEP 2: Schedule cleanup AFTER warp completes
+		when login begin
+			local cleanup_map = pc.getqf("pending_cleanup_map")
+			if cleanup_map > 0 then
+				pc.setqf("pending_cleanup_map", 0)
+
+				-- Now safely on new map, schedule cleanup
+				if pc.get_map_index() < 10000 then
+					clear_server_timer("instance_cleanup_v2", cleanup_map)
+					server_timer("instance_exit_cleanup", 5, cleanup_map)
+					sys_log(0, string.format("Scheduled cleanup for instance %d", cleanup_map))
+				end
+			end
+		end
+
+		-- Auto-cleanup check
+		when instance_cleanup_v2.server_timer begin
+			if d.select(get_server_timer_arg()) then
+				local current_time = get_time()
+				local player_left_time = d.getf("player_left_time")
+
+				if player_left_time > 0 then
+					local time_empty = current_time - player_left_time
+					local cleanup_time = 300  -- 5 minutes
+
+					if time_empty >= cleanup_time then
+						d.notice("Instance empty for 5 minutes. Cleaning up...")
+						d.purge()
+						clear_server_timer("instance_cleanup_v2", get_server_timer_arg())
+						return
+					end
+				end
+
+				-- Continue checking
+				server_timer("instance_cleanup_v2", 60, get_server_timer_arg())
+			end
+		end
+
+		-- Delayed cleanup after manual exit
+		when instance_exit_cleanup.server_timer begin
+			local map_idx = get_server_timer_arg()
+			sys_log(0, string.format("=== Cleanup timer fired for dungeon %d ===", map_idx))
+
+			if d.select(map_idx) then
+				sys_log(0, "Clearing instance content...")
+				d.clear_regen()
+				d.purge()  -- Kill all monsters
+
+				-- Mark as empty and let auto-cleanup destroy it after 5 minutes
+				d.setf("player_left_time", get_time())
+				server_timer("instance_cleanup_v2", 60, map_idx)
+
+				sys_log(0, string.format("Instance %d cleared, scheduled for auto-cleanup", map_idx))
+			else
+				sys_log(0, string.format("Failed to select dungeon %d", map_idx))
+			end
+		end
+		
+		-- Cleanup on logout
+		when logout begin
+			local map_idx = pc.get_map_index()
+
+			if pc.getf("universal_instance", "in_instance") == 1 then
+				pc.setf("universal_instance", "in_instance", 0)
+
+				if d.find(map_idx) then
+					d.setf("player_left_time", get_time())
+				end
+			end
+		end
+
+	end
+end
