@@ -60,23 +60,17 @@ def setup_links_db(target_dir):
     try_symlink(db_target, db_link_name, is_dir=False)
 	
 def setup_links_game(target_dir, name):
-    os.chdir(target_dir)
-    os.mkdir("log")
-    
-    try_symlink(os.path.join(GAMEDIR, "share", "conf"), "conf", is_dir=True)
-    try_symlink(os.path.join(GAMEDIR, "share", "data"), "data", is_dir=True)
-    try_symlink(os.path.join(GAMEDIR, "share", "locale"), "locale", is_dir=True)
-    try_symlink(os.path.join(GAMEDIR, "share", "mark"), "mark", is_dir=True)
-    try_symlink(os.path.join(GAMEDIR, "share", "package"), "package", is_dir=True)
-    
-    binary_target = os.path.join(GAMEDIR, "share", "bin", "game")
-    link_name = name
-    
-    if os.name == "nt": # Windows
-        binary_target += ".exe"
-        link_name += ".exe"
-    
-    try_symlink(binary_target, link_name, is_dir=False)
+	os.chdir(target_dir)
+	os.mkdir("log")
+	try_symlink(os.path.join(GAMEDIR, "share", "conf"), "conf", is_dir=True)
+	try_symlink(os.path.join(GAMEDIR, "share", "data"), "data", is_dir=True)
+	try_symlink(os.path.join(GAMEDIR, "share", "locale"), "locale", is_dir=True)
+	try_symlink(os.path.join(GAMEDIR, "share", "mark"), "mark", is_dir=True)
+
+	if os.name != "nt":
+		try_symlink(os.path.join(GAMEDIR, "share", "package"), "package", is_dir=True)
+
+	try_symlink(os.path.join(GAMEDIR, "share", "bin", "game"), name, is_dir=False)
 
 # Helper function to create symlinks cross-platform
 def try_symlink(target, link_name, is_dir):
@@ -106,9 +100,11 @@ if os.path.exists(channels_dir):
 	print_green("> Clearing up channels...")
 	shutil.rmtree(channels_dir)
 
-package_dir = os.path.join(GAMEDIR, "share", "package")
-if not os.path.exists(package_dir):
-	os.makedirs(package_dir)
+if os.name != "nt":
+	package_dir = os.path.join(GAMEDIR, "share", "package")
+
+	if not os.path.exists(package_dir):
+		os.makedirs(package_dir)
 ## DB Setup
 print_green("> Setting up environment for the DB Cache...")
 db_dir = os.path.join(GAMEDIR, "channels", "db")
