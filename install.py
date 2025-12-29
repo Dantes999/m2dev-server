@@ -43,43 +43,62 @@ def print_green(text):
 	print("\033[1;32m" + text + "\033[0m")
 
 def setup_links_db(target_dir):
-	os.chdir(target_dir)
-	os.mkdir("log")
-	try_symlink(os.path.join(GAMEDIR, "share", "conf"), "conf", is_dir=True)
-	try_symlink(os.path.join(GAMEDIR, "share", "data"), "data", is_dir=True)
-	try_symlink(os.path.join(GAMEDIR, "share", "locale"), "locale", is_dir=True)
-	try_symlink(os.path.join(GAMEDIR, "share", "bin", "db"), "db", is_dir=False)
+    os.chdir(target_dir)
+    os.mkdir("log")
+    
+    try_symlink(os.path.join(GAMEDIR, "share", "conf"), "conf", is_dir=True)
+    try_symlink(os.path.join(GAMEDIR, "share", "data"), "data", is_dir=True)
+    try_symlink(os.path.join(GAMEDIR, "share", "locale"), "locale", is_dir=True)
+    
+    db_target = os.path.join(GAMEDIR, "share", "bin", "db")
+    db_link_name = "db"
+    
+    if os.name == "nt":  # Windows
+        db_target += ".exe"
+        db_link_name += ".exe"
+    
+    try_symlink(db_target, db_link_name, is_dir=False)
 	
 def setup_links_game(target_dir, name):
-	os.chdir(target_dir)
-	os.mkdir("log")
-	try_symlink(os.path.join(GAMEDIR, "share", "conf"), "conf", is_dir=True)
-	try_symlink(os.path.join(GAMEDIR, "share", "data"), "data", is_dir=True)
-	try_symlink(os.path.join(GAMEDIR, "share", "locale"), "locale", is_dir=True)
-	try_symlink(os.path.join(GAMEDIR, "share", "mark"), "mark", is_dir=True)
-	try_symlink(os.path.join(GAMEDIR, "share", "package"), "package", is_dir=True)
-	try_symlink(os.path.join(GAMEDIR, "share", "bin", "game"), name, is_dir=False)
+    os.chdir(target_dir)
+    os.mkdir("log")
+    
+    try_symlink(os.path.join(GAMEDIR, "share", "conf"), "conf", is_dir=True)
+    try_symlink(os.path.join(GAMEDIR, "share", "data"), "data", is_dir=True)
+    try_symlink(os.path.join(GAMEDIR, "share", "locale"), "locale", is_dir=True)
+    try_symlink(os.path.join(GAMEDIR, "share", "mark"), "mark", is_dir=True)
+    try_symlink(os.path.join(GAMEDIR, "share", "package"), "package", is_dir=True)
+    
+    binary_target = os.path.join(GAMEDIR, "share", "bin", "game")
+    link_name = name
+    
+    if os.name == "nt": # Windows
+        binary_target += ".exe"
+        link_name += ".exe"
+    
+    try_symlink(binary_target, link_name, is_dir=False)
 
 # Helper function to create symlinks cross-platform
 def try_symlink(target, link_name, is_dir):
-	try:
-		if os.path.lexists(link_name):
-			os.remove(link_name)
-		
-		if os.name == "nt":  # Windows
-			if is_dir:
-				# For directories, create junction
-				import subprocess
-				subprocess.run(["mklink", "/J", link_name, target], shell=True, check=True)
-			else:
-				# For files, copy instead of symlink
-				target += ".exe"
-				link_name += ".exe"
-				shutil.copy2(target, link_name)
-		else:  # Unix-like systems
-			os.symlink(target, link_name, target_is_directory=is_dir)
-	except (OSError, subprocess.CalledProcessError) as e:
-		print(f"> Failed to create link: {link_name} -> {target} ({e})")
+    try:
+        if os.path.lexists(link_name):
+            os.remove(link_name)
+        
+        if os.name == "nt":  # Windows
+            if is_dir:
+                # For directories, create junction
+                subprocess.run(["mklink", "/J", link_name, target], shell=True, check=True)
+            else:
+                # For files, create symlink (Windows Vista+)
+                subprocess.run(["mklink", link_name, target], shell=True, check=True)
+        else:  # Unix-like systems
+            os.symlink(target, link_name, target_is_directory=is_dir)
+    except (OSError, subprocess.CalledProcessError) as e:
+        print(f"> Failed to create link: {link_name} -> {target} ({e})")
+        # Fallback: copy the file if symlink fails
+        if not is_dir and os.path.exists(target):
+            print(f"> Falling back to copy for {link_name}")
+            shutil.copy2(target, link_name)
 
 ## Clearing Up Old Files
 channels_dir = os.path.join(GAMEDIR, "channels")
